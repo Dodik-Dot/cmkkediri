@@ -1,0 +1,43 @@
+name: Validate source
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  portable-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Parse Linux source by shebang
+        run: python3 tests/validate_syntax.py
+      - name: Receiver tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Battery regression cases
+        run: |
+          mkdir -p /tmp/cmk-java-tests
+          javac -d /tmp/cmk-java-tests android/app/src/main/java/com/bcp/checkmkagent/BatteryEstimate.java tests/BatteryEstimateTest.java
+          java -cp /tmp/cmk-java-tests BatteryEstimateTest
+  powershell-syntax:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse PowerShell without running installers
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem windows -Recurse -Filter *.ps1 | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors) { $errors | ForEach-Object { Write-Output $_ }; $failed = $true }
+          }
+          if ($failed) { exit 1 }
